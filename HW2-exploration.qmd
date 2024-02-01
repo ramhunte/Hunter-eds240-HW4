@@ -1,0 +1,127 @@
+---
+title: "HW2-exploration"
+author: "Raymond Hunter (he/him/his)"
+date: 2024-01-20
+toc: true
+format: html
+editor: visual
+---
+
+
+```{r}
+#loading necessary packages
+library(tidyverse)
+library(janitor)
+library(naniar)
+library(RColorBrewer)
+
+#reading in fishing vessel data
+boats <- read.csv("data/fishing-vessels-v2.csv")
+
+```
+
+
+# Data Warngling
+```{r}
+# cleaning up boats data frame ----
+boats_clean <- boats %>% 
+  #cleaning names
+  clean_names() %>% 
+  # selecting specific columns
+  select(mmsi, flag_gfw, vessel_class_gfw, self_reported_fishing_vessel,  fishing_hours_2012:fishing_hours_2020) %>% 
+  # filtering out na values
+  filter(!is.na(flag_gfw)) %>% 
+  # changing class of variables
+  mutate(mmsi = as.character(mmsi),
+         flag_gfw = as.factor(flag_gfw)) %>% 
+ #finding proportion of boats that are self reported by country 
+  group_by(flag_gfw) %>% 
+  mutate(prop_self_rep = mean(self_reported_fishing_vessel, na.rm = TRUE),
+         n_vessels = n()) %>% 
+  #moving to column #4 
+    relocate(prop_self_rep, .after = 4)
+  ungroup() 
+    
+# summary
+summary(boats_clean)
+glimpse(boats_clean)
+
+
+top_15 <- boats_clean %>% 
+  group_by(flag_gfw, prop_self_rep, n_vessels,) %>% 
+  summarise(time = sum(
+    # fishing_hours_2012 + fishing_hours_2013 + fishing_hours_2014 + fishing_hours_2015 + fishing_hours_2016 + fishing_hours_2017 + fishing_hours_2018 + fishing_hours_2019 + 
+      fishing_hours_2020, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  slice_max(order_by = time, n = 15)
+```
+
+
+
+# Visualizing data 
+```{r}
+ggplot(data = top_15, aes(x = fct_reorder(flag_gfw, n_vessels), y = n_vessels, fill = prop_self_rep)) + 
+  geom_col() + 
+  coord_flip() +
+  labs(x = "Number of vessels identified within 2012-2020",
+         y = "Country", 
+       fill = "Proportion self reported",
+       title = "Total Number of Fishing Vessels by Country") +
+  theme_minimal() +
+  scale_fill_viridis_b()
+  
+  
+```
+
+```{r}
+boats_clean %>% 
+  filter(flag_gfw %in% top_15$flag_gfw) %>% 
+  ggplot(aes(y = fct_reorder(flag_gfw, fishing_hours_2020), 
+             x = fishing_hours_2020, fill = after_stat(x))) +
+  ggridges::geom_density_ridges_gradient(scale = 3) +
+   scale_fill_viridis_c() +
+  theme_minimal() +
+  labs(x = "Vessel fishing hours in 2020",
+       y = "Country",
+       title = "Fishing vessel activity by country in 2020") 
+  
+ 
+```
+
+
+
+```{r}
+boats_clean %>% 
+  filter(flag_gfw %in% top_20$flag_gfw) %>% 
+  group_by(flag_gfw, vessel_class_gfw) %>% 
+  summarise(sum = n()) %>% 
+  #ggplot
+  ggplot(aes(x = flag_gfw, fill = vessel_class_gfw)) +
+  geom_bar(position = "fill")
+  
+  
+  
+```
+
+
+**1. What have you learned about your data? Have any potentially interesting patterns emerged? (5-8 sentences)**
+
+> I have learned that my data is relatively clean to begin with and well labeled, but it contains a lot of NA values. Fortunately, the NA values were mostly in variables that I am not concerned with and are oftentimes related to fishing vessels of countries with low fishing rates. So far, I think the most interesting pattern that I have observed is the sheer amount of fishing vessels that have been identified to be owned by China. It literally dwarfs all other countries' fishing fleets by hundreds of thousands. I also noticed that Russian fishing vessels spent substantially longer periods of time fishing in 2022 than other countries (not sure why but I thought it was note worthy). I have also noted that the US reported a smaller proportion of its fishing vessels than did China, but these unreported boats are still quite small in count compared to China's massive fleet. Korea reported less than half of its shipping vessels in operation between 2012-2020 as well which makes me want to look further into this. 
+
+**2. In HW #1, you outlined some questions that you wanted to answer using these data. Have you made any strides towards answering those questions? If yes, how so? If no, what next steps do you need to take (e.g. I need to create X plot type, I still need to track down Y data, I need to restructure existing data so that you can visualize it in Z ways, etc.)? (8-12 sentences)**
+
+>  I feel like I have made small but significant strides towards answering these questions. My strides have been basic visualizations of summary stats, distribution, and counts of fishing vessel data for the top 20 countries with the highest number of boats. This has allowed me to better understand the structure and type of data I am working with, but it doesn't necessarily feel groundbreaking or anything like the final product. This data set is quite large (> 114,000 observations from over 160 countries). I think where I haven't made my strides is narrowing down the scope of what I want my questions to look like and how I envision the final figures to look. I need to start exploring more types of figures to make that specifically can handle larger numbers of groups (ideally the top 20 countries). I may also try to add some more variables/wrangle the fishing data a bit more to include a broader class of fishing types as it currently classifies fishing vessel types very specifically which is making my legends look quite ugly. I would also like to add a column by continent to compare fishing rates globally at a broader scale. 
+
+
+
+
+3. What challenges do you foresee encountering with your data? These can be data wrangling and / or visualization challenges. (4-6 sentences)
+
+> I foresee finding an area to focus in on as being the main challenge. There are so many different variables and ways to take this data set that trying to figure out what the best visualizations are feels daunting. I don't really think that wrangling is going to be the biggest challenge, although I have had some challenges with it so far. I think that showing all relevant information for the top 20 fishing countries is going to be hard because figures can get really ugly really quick when packing in too much at once. I want to sit with the data  bit more and try to think about what I am really trying to show and what data should I focus on to show this. I tried plotting the total number of fishing vessels by each country and it looked horrendous, although I might make a color coded map with that now that I am thinking about it. I am overall feeling most challenged by picking a portion of the data I want to focus on.  
+
+
+
+
+
+
+
