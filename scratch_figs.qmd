@@ -1,0 +1,47 @@
+---
+title: "scratch_figs"
+format: html
+editor: visual
+---
+
+# scratch for discussion week 5
+
+```{r}
+test <- boats_clean %>% 
+  na.omit() %>% 
+  filter(flag_gfw %in% top_50$flag_gfw) %>%
+  select(flag_gfw, vessel_class_gfw, tonnage_gt_gfw, self_reported_fishing_vessel, year, fishing_time) %>% 
+  group_by(flag_gfw) %>% 
+  summarise(perc_reg = mean(self_reported_fishing_vessel == TRUE, na.rm = TRUE)*100,
+            fishing_hrs = mean(fishing_time),
+            tonnage = mean(tonnage_gt_gfw))
+
+
+
+
+test %>% 
+  ggplot(aes(y = fishing_hrs, x = perc_reg, color = flag_gfw)) + 
+  geom_point() +
+  theme_minimal()
+
+
+test2 <- boats %>% 
+  filter(flag_gfw == "CHN") %>%
+  select(flag_gfw, vessel_class_gfw, tonnage_gt_gfw, self_reported_fishing_vessel) %>% 
+  mutate(vessel_class_gfw = str_replace_all(vessel_class_gfw,"\\bsein\\b", "test")) %>% 
+  group_by(vessel_class_gfw) %>% 
+  summarise(perc_reg = round(mean(self_reported_fishing_vessel == TRUE, na.rm = TRUE)*100),
+            tonnage = mean(tonnage_gt_gfw),
+            count = n())
+
+test2 %>% 
+  ggplot(aes(x = fct_reorder(vessel_class_gfw, count), y = count, fill = perc_reg)) +
+  geom_col() +
+  scale_fill_viridis_c() +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = "Number of Vessels (2012-2020)",
+       y = "Vessel Class",
+       title = "China's Fishing Fleet by Count",
+       fill = "Percent Legally Registered")
+```

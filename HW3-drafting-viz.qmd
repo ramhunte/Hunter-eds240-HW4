@@ -1,0 +1,629 @@
+---
+title: "HW3-drafting-viz"
+author: "Raymond Hunter (he/him/his)"
+date: Sys.Date()
+format:
+  html:
+    embed-resources: true
+editor: visual
+---
+
+```{r set up}
+#loading necessary packages
+library(tidyverse)
+library(janitor)
+library(RColorBrewer)
+library(showtext) # for grabbing fonts
+library(png)
+library(ggpubr)
+library(ggforce)
+library(patchwork)
+
+# Custom themes ----
+
+# custom google fonts
+font_add_google(name = "Rubik", 
+                family = "rub")
+font_add_google(name = "Sen", 
+                family = "sen")
+font_add_google(name = "Julius Sans One", 
+                family = "jul")
+font_add_google(name = "Marmelad", 
+                family = "mar")
+font_add_google(name = "Playfair Display", 
+                family = "play")
+font_add_google(name = "Lato", 
+                family = "lat")
+showtext_auto() # for importing fonts
+
+# custom color palette
+pal <- c(light_text = "#e1d921",
+         dark_text = "#EE1C25")
+```
+
+### Which option do you plan to pursue?
+
+> I plan to persue the infographic (option 2). I ampersuing this because I want to get creative with the inforgraphic and make almost a poster like story representation of China's illegal fishing fleet. It seems like a unique way to tell a story and tie together mutliple figures to represent something bigger.
+
+### Restate your question(s). Has this changed at all since HW #1? If yes, how so?
+
+> My question has changed quite a bit. I originally wanted to look at a comparison of all the major fishing countries and comapre their illegal vs legal fishing vessel fleets. However, i quickly realized that China's fishing fleet is orders of magnitude larger than any other country, and so I shifted my focus onto investigating just China's fleet because there is so much data to work with in just this one country alone. My overarching question is:
+
+> How does China's illegal fishing fleet function in comparison to their legal fishing fleet?
+
+> 1) How have China's illgeal and legal fishing fleets grown over time? 
+> 2) Do illgeal vessels fish for longer periods of time than legal vessels?
+> 3) 
+
+### Explain which variables from your data set(s) you will use to answer your question(s).
+
+> I am using mainly three different variables to answer my questions. All variables were from the same initial Global Fishing Watch data set I used. The only other transformations I needed to get was the total number of fishing vessels by each class and registration type which was easily calculated by `group_by` and `summarise` functions. These variables include: 
+* **Vessel class** which is the type of fishing vessel 
+* **Fishing Time** or the total number of hours that a vessel fished
+* **Year** the year between 2012-2020 that the observation was measured
+* **Self Reported** which is a binary outcome (TRUE or FALSE) that states whether or not the vessel legally is registered as a fishing vessel or not
+
+
+### Find at least two data visualizations  and explain which elements you might borrow
+
+> 1) This first data visualization was made by Cédric Scherer. It is a donut chart accompanied by a bar chart. It is in German so I don't know exactly what is is saying, but I can tell that the donut is broken up into "Yes" and "No", and the "Yes" information is then broken down further into subcategories and their % contributions to the total population of "Yes". I would like to adapt this similar technique to my infographic where I could show the total percentages of legal and illegal Chinese fishing vessels in the donut. Then in the bar chart I could show the relative percentages of illegal vessel classes.
+
+![](images/cedric_donut.jpg){fig-alt="Alt text goeséhere"}
+> 2) This second data visualization was also made by Cédric Scherer. It is a ridgeline plot showing the distribution of two different characteristics across multiple languages. I like how clearly it compares the distribution of information side by side for each language as it paints a very apparent message for what the figure is trying to show. The specific aspects I like and would want to adopt are the soft color palette and the data points underneath the ridgelines. I am planning on making a ridgeline plot for my inforgraphic where each row represents a fishing vessel class and there are two distributions of total annual hours fished for each vessel (legal and illegal). This will allow me to compare if there are differences in the duration of fishing times between illegal vs legal fishing vessels. The only thing I am concerned about is if the ridges for illegal and legal vessles overlap too much. It might look a bit messy.
+
+![](images/cedric_ridgeline.jpg){fig-alt="Alt text goeséhere"}
+
+
+### Data Wrangling
+
+```{r wrangling}
+
+#reading in fishing vessel data
+boats <- read.csv("data/fishing-vessels-v2.csv") 
+
+# cleaning up boats data frame ----
+boats_clean <- boats %>% 
+  #cleaning names
+  clean_names() %>% 
+  # selecting specific columns
+  select(mmsi, flag_gfw, vessel_class_gfw, tonnage_gt_gfw, self_reported_fishing_vessel,  fishing_hours_2012:fishing_hours_2020) %>% 
+  # filtering out na values
+  filter(!is.na(flag_gfw)) %>% 
+  # changing class of variables
+  mutate(mmsi = as.character(mmsi),
+         flag_gfw = as.factor(flag_gfw)) %>% 
+ #finding proportion of boats that are self reported by country 
+  group_by(flag_gfw) %>% 
+  mutate(prop_self_rep = mean(self_reported_fishing_vessel, na.rm = TRUE),
+         n_vessels = n()) %>% 
+  #moving to column #4 
+    relocate(prop_self_rep, .after = 4) %>% 
+  ungroup() %>% 
+  pivot_longer(cols = starts_with("fishing"),
+               names_to = "year",
+               values_to = "fishing_time") %>% 
+  mutate(year = str_remove(year, "fishing_hours_"))
+
+
+top_10 <- boats_clean %>% 
+  filter(year == 2020) %>% 
+  group_by(flag_gfw, prop_self_rep, n_vessels,) %>% 
+  summarise(time = sum(
+    # fishing_hours_2012 + fishing_hours_2013 + fishing_hours_2014 + fishing_hours_2015 + fishing_hours_2016 + fishing_hours_2017 + fishing_hours_2018 + fishing_hours_2019 + 
+      fishing_time, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  slice_max(order_by = time, n = 10)
+
+```
+
+
+
+# Figure 1: Split Violin plot
+```{r ridgeline}
+violin_df <- boats_clean %>% 
+  filter(flag_gfw == "CHN") %>% 
+  filter(!is.na(self_reported_fishing_vessel)) %>% 
+  mutate(vessel_class_gfw = ifelse(vessel_class_gfw %in% c("trawlers", "fishing", "set_gillnets", "set_longlines", "fixed_gear"), vessel_class_gfw, "other")) %>% 
+  group_by(mmsi, vessel_class_gfw, self_reported_fishing_vessel) %>% 
+  summarise(fishing_time = mean(fishing_time, na.rm = TRUE)) 
+
+  
+  ggplot(data = violin_df, aes(x = fishing_time, 
+                               y = fct_reorder(vessel_class_gfw, fishing_time, .fun = mean), 
+                               fill = self_reported_fishing_vessel)) +
+  geom_violin(split = TRUE) 
+  
+```
+
+
+# Figure 2: China Fishing fleet over time
+```{r linegraph}
+
+# china image ----
+# read in image of China
+png <- readPNG("images/china.png")
+
+# adjusting image transparency
+png2 <- matrix(rgb(png[,,1],png[,,2],png[,,3], png[,,4] * 0.2), nrow=dim(png)[1]) ## you can change 0.5 to change the alpa
+
+# --------------------------------------------------------------------------------------
+
+# wrangling data for line graph ----
+
+china_fig <- boats_clean %>% 
+  # filtering to just china and highest specific vessels
+  filter(flag_gfw == "CHN",
+         vessel_class_gfw %in% c("trawlers", "set_gillnets", "set_longlines"),
+         # removing NA's
+         !is.na(fishing_time),
+         !is.na(self_reported_fishing_vessel)) %>% 
+  group_by(vessel_class_gfw, self_reported_fishing_vessel, year) %>% 
+  summarise(
+    # summarising total vessels, total fishing time, and self reported percent
+    total_vessels = sum(n()),
+    total_fishing_time = sum(fishing_time, na.rm = TRUE), 
+  self_reported = mean(self_reported_fishing_vessel, na.rm = TRUE)) %>% 
+  # releveling fishing vessles
+  mutate(vessel_class_gfw = factor(vessel_class_gfw,
+                                   level = c("trawlers", 
+                                             "set_gillnets", "set_longlines")),
+         self_reported_fishing_vessel = factor(self_reported_fishing_vessel,
+                                               level = c("TRUE", "FALSE"))) %>% 
+
+# --------------------------------------------------------------------------------------
+  
+# line graph ----
+  
+# setting aesthetics of ggplot
+  ggplot(aes(x = year, y = total_vessels, 
+             color = vessel_class_gfw,
+             group = interaction(vessel_class_gfw, self_reported_fishing_vessel),
+             shape = self_reported_fishing_vessel,
+             linetype = self_reported_fishing_vessel)) +
+  
+  # adding china image
+  annotation_raster(png2, xmin = 1, xmax = 8, ymin = -Inf, ymax = Inf) +
+ 
+    # adding lines
+ geom_line(aes(linetype = self_reported_fishing_vessel),
+           show.legend = FALSE,
+           alpha = 0.6) +
+  
+   # adding points
+  geom_point(size = 4,
+             aes(shape = self_reported_fishing_vessel)) +
+
+  
+  # legend specifications
+   guides(color = guide_legend(title = "Vessel Class"),
+         shape = guide_legend(title = "Self Reported",
+                              override.aes = list(color = "white")),
+         linetype = guide_legend(title = "Self Reported")) +
+  
+  # labeling
+  labs(x = "", 
+       y = "# Active Vessels",
+       color = "Vessel Class",
+       shape = "Legal",
+       title = "China's Fishing Fleet (2012-2020)",
+       subtitle = "vessel count by class",
+       caption = "Data Source: Global Fishing Watch (2023)") +
+ 
+   # color scale
+  scale_color_manual(values = c("cyan3", "#04D9ff", "violet"),
+                      labels = c("Trawlers", "Set Gillnets", "Set Longlines")) +
+  scale_shape_manual(values = c("triangle", "circle"),
+                     labels=c("TRUE" = "Yes", "FALSE"="No")) +
+  # scale_color_brewer(palette = "Dark2",
+  #                    labels = c("Trawlers", "Set Gillnets", "Set Longlines")) +
+  
+  # x and y scale position/style
+  scale_x_discrete(expand = c(0.04, 0)) + # pushing data to edges of axes
+  scale_y_continuous(expand = c(0.04, 0),
+                     # modifying y axis scale 
+                     labels = scales::label_number(
+                       scale_cut = scales::cut_short_scale())) +
+
+  # minimal theme
+    theme_classic() +
+ 
+  # customizing theme
+  theme(
+    # background colors
+    panel.background = element_rect(fill = "black"),
+    plot.background = element_rect(fill = "black"),
+    panel.grid.minor.y = element_blank(),
+    
+    # axis 
+    axis.text = element_text(color = "white", family = "sen"),
+    axis.text.x = element_text(size = 40),
+    axis.text.y = element_text(size = 40),
+    axis.line = element_line(color = "white"),  # Set axis line color to white
+    axis.ticks = element_line(color = "white"),
+    axis.title.y = element_text(margin = margin(t = 12, r = 15, b = 30, l = 10), 
+                                size = 40, 
+                                family = "sen",
+                                color = pal["light_text"]),
+   
+    # plot titles/subtitles/caption
+    plot.title.position = "plot",
+    plot.title = element_text(face = "bold",
+                              family = "play",
+                              size = 76,
+                              color = pal["dark_text"],
+                              margin = margin(t = .15, r = 1, 
+                                              b = 0, l = 0, unit = "lines")),
+    plot.subtitle = element_text(size = 48,
+                                 family = "sen",
+                                 color = pal["light_text"],
+                                 margin = margin(t = .1, r = 0, 
+                                                 b = .75, l = 0, unit = "lines")),
+    plot.caption = element_text(face = "italic",
+                                family = "sen",
+                                color = "white",
+                                size = 24,
+                                margin = margin(t = .75, r = 1, 
+                                                b = 0.75, l = 0, unit = "lines")),
+    
+    # legend
+    legend.title = element_text(family = "sen",
+                                color = pal["light_text"],
+                                size = 38,
+                                margin = margin(b = -.4, unit = "lines")),
+    legend.text = element_text(color = "white",
+                               family = "sen",
+                               size = 30),
+    legend.background = element_rect(fill = "black"),
+    legend.key.height= unit(1, "lines"), # Adjust the size of legend key
+    legend.key.width = unit(0.01, "cm") # Adjust the width of legend key
+  ) 
+# --------------------------------------------------------------------------------------
+ 
+    
+# save plot ----
+    
+ggsave("images/china_fig.jpeg", plot = china_fig, device = "jpeg", width = 8, height = 6, units = "in")
+
+RColorBrewer::display.brewer.all(
+  
+)
+```
+
+
+# Donut 
+```{r donut}
+  donut_df <- boats_clean %>%
+  filter(flag_gfw == "CHN",
+         !is.na(self_reported_fishing_vessel)) %>% 
+  group_by(mmsi, vessel_class_gfw) %>% 
+  summarise(self_reported_fishing_vessel = self_reported_fishing_vessel) %>%  
+  distinct() %>% 
+  group_by(self_reported_fishing_vessel) %>% 
+  summarize(count = n()) %>% 
+  mutate(self_reported_fishing_vessel = ifelse(self_reported_fishing_vessel, "Legal", "Illegal"),
+         percentage = round(count/sum(count)*100, digits = 1),
+         ymax = cumsum(percentage),
+         ymin = lag(ymax, default = 0),
+         labelPosition = (ymax + ymin)/2,
+         label = paste0(percentage, "%")) 
+
+total_count <- format(sum(donut_df$count),
+                      big.mark = ",")
+
+
+# Make the plot
+donut <- ggplot(data = donut_df, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill = self_reported_fishing_vessel)) +
+  geom_rect() +
+  geom_label( x=3.5, aes(y=labelPosition, label=label), size=14,
+              label.size = NA,
+              family = "play",
+              fill = NA,
+              lineheight = unit(.3, "lines")) +
+
+   annotate(geom = 'text', x = 1.7, y = 1, label = paste(total_count, "\n", "Vessels"),
+            size = 20, color = "white", lineheight = unit(.3, "lines"), family = "play") +
+  
+  scale_fill_manual(values = c("#e1d921", "#EE1C25")) +
+  coord_polar(theta="y") +
+  xlim(c(1.7, 4)) +
+  theme_void() +
+  theme(legend.position = "none",
+        panel.background = element_rect(fill = "transparent", color = NA),
+    plot.background = element_rect(fill = "transparent", color = NA))
+
+ggsave("images/donut.jpeg", plot = donut, device = "jpeg", width = 8, height = 6, units = "in")
+```
+
+# Bar chart 
+```{r}
+barchart_df <- boats_clean %>%
+  filter(flag_gfw == "CHN",
+         !is.na(self_reported_fishing_vessel)) %>% 
+  mutate(vessel_class_gfw = ifelse(vessel_class_gfw %in% c("trawlers", "fishing", "set_gillnets", "set_longlines", "fixed_gear"), vessel_class_gfw, "other")) %>% 
+  group_by(mmsi, vessel_class_gfw) %>% 
+  summarise(self_reported_fishing_vessel = self_reported_fishing_vessel) %>%  
+  distinct() %>% 
+  group_by(vessel_class_gfw, self_reported_fishing_vessel) %>% 
+  summarise(count = n()) 
+
+barchart <- ggplot(data = barchart_df, aes(x = fct_reorder(vessel_class_gfw, count), 
+             y = count, fill = self_reported_fishing_vessel)) +
+  theme_classic() +
+  geom_col(position = "dodge") +
+  labs(fill = "Self Registered", 
+       x = "", 
+       y = "Total # Vessels",
+       title = "China's Fishing Fleet (2012 - 2020)",
+       subtitle = "vessel classes and legality",
+       caption = "test") +
+    geom_text(aes(label = scales::comma(count), hjust = -0.1), color = "white", size = 20,
+              position = position_dodge(width = .9),
+              family = "play") +
+  
+  scale_fill_manual(values = c("#e1d921", "#EE1C25"),
+                    labels = c("Illegal", "Legal"),
+                    guide = guide_legend(reverse = TRUE)) +
+  # geom_text(aes(y = label_y, label = round(n_diff)), color = "white", alpha = 0.5) +
+  
+  # pushing y axis labels to edhe of data 
+  scale_y_continuous(labels = scales::label_number(
+                       scale_cut = scales::cut_short_scale()),
+                      expand = c(0, 0),
+                     limits = c(0, 30000)) +
+  scale_x_discrete(labels = c("trawlers" = "Trawlers", "fishing" = "Unknown", "set_longlines" = "Longlines",
+                              "set_gillnets" = "Gillnets", "other" = "Mixed Other", "fixed_gear" = "Fixed Gear")) +
+
+  
+  coord_flip() +
+  # customizing theme
+  theme(
+    # background colors
+    panel.background = element_rect(fill = "black"),
+    plot.background = element_rect(fill = "black"),
+    
+    # axis 
+    axis.text = element_text(color = "white", family = "sen"),
+    axis.text.x = element_text(size = 40),
+    axis.text.y = element_text(size = 40),
+    axis.line = element_line(color = "white"),  # Set axis line color to white
+    axis.ticks = element_line(color = "white"),
+    axis.title.y = element_text(margin = margin(t = 0, r = 0, b = 0, l = 0), 
+                                size = 40, 
+                                family = "sen",
+                                color = pal["light_text"]),
+    axis.title.x = element_text(margin = margin(t = 4, r = 0, b = 0, l = 3), 
+                                size = 54, 
+                                family = "sen",
+                                color = pal["light_text"]),
+   
+    # plot titles/subtitles/caption
+     plot.margin = margin(0, 1, 1, 0.1, "cm"), # Increase the right margin to 2 cm
+    plot.title.position = "plot",
+    plot.title = element_text(face = "bold",
+                              family = "play",
+                              size = 76,
+                              color = pal["dark_text"],
+                              margin = margin(t = .15, r = 1, 
+                                              b = 0, l = 0, unit = "lines")),
+    plot.subtitle = element_text(size = 48,
+                                 family = "sen",
+                                 color = pal["light_text"],
+                                 margin = margin(t = .1, r = 0, 
+                                                 b = 0.1, l = 0, unit = "lines")),
+    plot.caption = element_text("blank"),
+      # face = "italic",
+      #                           family = "sen",
+      #                           color = "white",
+      #                           size = 24,
+      #                           margin = margin(t = .75, r = 1, 
+      #                                           b = 0.75, l = 0, unit = "lines")),
+    
+    # legend
+    legend.title = element_text("blank"),
+      # family = "sen",
+      #                           color = pal["light_text"],
+      #                           size = 38,
+      #                           margin = margin(b = -.4, unit = "lines")),
+    legend.text = element_text(color = "white",
+                               family = "sen",
+                               size = 40),
+    legend.position = c(0.47, -.18),
+    legend.direction = "horizontal",
+    legend.background = element_rect(fill = NA),
+    legend.key.size = unit(1.2, "lines") # Adjust the size of the legend key
+  ) 
+  
+
+ggsave("images/barchart.jpeg", plot = barchart, device = "jpeg", width = 8, height = 6, units = "in")
+```
+
+# Illegal percentages
+```{r}
+# illegal
+illegal_percent <- boats_clean %>%
+  filter(flag_gfw == "CHN",
+         self_reported_fishing_vessel == "FALSE",
+         !is.na(self_reported_fishing_vessel)) %>% 
+  mutate(vessel_class_gfw = ifelse(vessel_class_gfw %in% c("trawlers", "fishing", "set_gillnets", "set_longlines", "fixed_gear"), vessel_class_gfw, "other")) %>% 
+  #   group_by(mmsi, vessel_class_gfw) %>% 
+  # summarise(self_reported_fishing_vessel = self_reported_fishing_vessel) %>%  
+  distinct(mmsi, vessel_class_gfw) %>% 
+  group_by(vessel_class_gfw) %>% 
+  summarise(count = n()) %>% 
+  mutate(percent = paste0(round(count/sum(count)*100, digits = 1), "%"))
+
+# legal
+legal_percent <-
+  boats_clean %>%
+  filter(flag_gfw == "CHN",
+         self_reported_fishing_vessel == "TRUE",
+         !is.na(self_reported_fishing_vessel)) %>% 
+  mutate(vessel_class_gfw = ifelse(vessel_class_gfw %in% c("trawlers", "fishing", "set_gillnets", "set_longlines", "fixed_gear"), vessel_class_gfw, "other")) %>% 
+  #   group_by(mmsi, vessel_class_gfw) %>% 
+  # summarise(self_reported_fishing_vessel = self_reported_fishing_vessel) %>%  
+  distinct(mmsi, vessel_class_gfw) %>% 
+  group_by(vessel_class_gfw) %>% 
+  summarise(count = n()) %>% 
+  mutate(percent = paste0(round(count/sum(count)*100, digits = 1), "%"))
+           
+```
+
+
+
+
+# combine 
+```{r}
+test <- barchart + 
+  
+# ------------------------------ Illegal Annotation -----------------------------------------------
+  # Trawlers
+     annotate("text",
+          label = "55.4% Trawlers", 
+           y = 26850,
+           x = 4.4,
+          color = "#e1d921",
+          size = 12,
+          family = "play") +
+  annotate("segment", x = 4.37, xend = 4.37, y = 19000, yend = 24000,
+  colour = "white", linewidth = .3) +
+  # set longlines
+   annotate("text",
+          label = "13.6% Longlines", 
+           y = 27000,
+           x = 4.1,
+          color = "#e1d921",
+          size = 12,
+          family = "play") +
+    annotate("segment", x = 4.07, xend = 4.07, y = 20250, yend = 24000,
+  colour = "white", linewidth = .3) +
+    # unknown
+   annotate("text",
+          label = "10.7% Unknown", 
+           y = 26900,
+           x = 3.8,
+          color = "#e1d921",
+          size = 12,
+          family = "play") +
+  annotate("segment", x = 3.77, xend = 3.77, y = 21000, yend = 24000,
+  colour = "white", linewidth = .3) +
+   # set gillnets
+   annotate("text",
+          label = "8.3% Gillnets", 
+           y = 26750,
+           x = 3.5,
+          color = "#e1d921",
+          size = 12,
+          family = "play") +
+    annotate("segment", x = 3.47, xend = 3.47, y = 21500, yend = 24000,
+  colour = "white", linewidth = .3) +
+  # other
+   annotate("text",
+          label = "8.2% Other", 
+           y = 26500,
+           x = 3.2,
+          color = "#e1d921",
+          size = 12,
+          family = "play") +
+    annotate("segment", x = 3.17, xend = 3.17, y = 21750, yend = 24000,
+  colour = "white", linewidth = .3) +
+  # fixed gear
+   annotate("text",
+          label = "3.9% Fixed Gear", 
+           y = 27350,
+           x = 2.9,
+          color = "#e1d921",
+          size = 12,
+          family = "play") +
+    annotate("segment", x = 2.87, xend = 2.87, y = 21900, yend = 24000,
+  colour = "white", linewidth = .3) +
+  
+  # ------------------------------ legal Annotation -----------------------------------------------
+ # trawlers
+annotate("text",
+          label = "44.0% Trawlers", 
+           y = 26950,
+           x = 2.6,
+          color = "#EE1C25",
+          size = 12,
+          family = "play") +
+    annotate("segment", x = 2.57, xend = 2.57, y = 21900, yend = 24000,
+  colour = "white", linewidth = .3) + 
+  
+   # unknown
+   annotate("text",
+          label = "21.4% Unknown", 
+           y = 27100,
+           x = 2.3,
+          color = "#EE1C25",
+          size = 12,
+          family = "play") +
+    annotate("segment", x = 2.27, xend = 2.27, y = 21750, yend = 24000,
+  colour = "white", linewidth = .3) +
+    
+   # longlines
+   annotate("text",
+          label = "11.1% Longlines", 
+           y = 27100,
+           x = 2.0,
+          color = "#EE1C25",
+          size = 12,
+          family = "play") +
+    annotate("segment", x = 1.97, xend = 1.97, y = 21500, yend = 24000,
+  colour = "white", linewidth = .3) +
+     
+  # gillnets
+   annotate("text",
+          label = "10.0% Gillnets", 
+           y = 26850,
+           x = 1.7,
+          color = "#EE1C25",
+          size = 12,
+          family = "play") +
+    annotate("segment", x = 1.67, xend = 1.67, y = 21000, yend = 24000,
+  colour = "white", linewidth = .3) +
+  
+  # other
+   annotate("text",
+          label = "8.5% Other", 
+           y = 26600,
+           x = 1.4,
+          color = "#EE1C25",
+          size = 12,
+          family = "play") +
+    annotate("segment", x = 1.37, xend = 1.37, y = 20250, yend = 24000,
+  colour = "white", linewidth = .3) +
+  
+   # fixed gear
+   annotate("text",
+          label = "4.9% fixed gear", 
+           y = 27400,
+           x = 1.1,
+          color = "#EE1C25",
+          size = 12,
+          family = "play") +
+    annotate("segment", x = 1.07, xend = 1.07, y = 19000, yend = 24000,
+  colour = "white", linewidth = .3) +
+  
+  
+  
+  
+  inset_element(donut, 
+                          left = 0.15,
+                          bottom = 0.04,
+                          top = .7,
+                          right = .95) 
+
+  
+
+ggsave("images/test.jpeg", plot = test, device = "jpeg", width = 8, height = 6, units = "in")
+```
+
+
+
+
+
+
+
+
+
+
